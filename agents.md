@@ -300,19 +300,21 @@ Semver-style `MAJOR.MINOR.PATCH`, but with project-specific bump rules:
 | 变更类型 | 版本增量 | 示例 |
 |---------|---------|------|
 | 大版本（新功能、重要适配、行为面较大的变更） | `+0.1.0` | `1.0.1` → `1.1.0` |
-| 小版本（bug fix、小改动、文档/测试） | `+0.0.1` | `1.0.0` → `1.0.1` |
+| 小版本（bug fix、影响扩展运行的小改动） | `+0.0.1` | `1.0.0` → `1.0.1` |
+| 仅文档 / README / 注释 / 测试文案，不影响扩展行为 | **不升版本** | 直接 commit + push |
 
 Rules:
-1. Keep `package.json` and `src/manifest.json` version in sync.
+1. Keep `package.json` and `src/manifest.json` version in sync **when bumping**.
 2. Every version bump must update `CHANGELOG.md` using `add` / `fix` entries (`change` optional).
 3. ChatGPT DOM 适配：若仅为修复抓取/跳转失效 → `+0.0.1`；若引入新导航能力或大范围架构调整 → `+0.1.0`.
+4. README / agents.md 等文档-only 变更：commit + push 即可，**不要**改版本号或强行写 changelog。
 
 ## Development Workflow
 
 1. **Rebuild**: After making changes, run `bun run build` to recompile the project.
 2. **Reload**: Go to `chrome://extensions/` and click the reload icon for the NavGPT extension.
 3. **Refresh**: Refresh the ChatGPT page to apply changes.
-4. **Release note**: Bump version per Versioning rules and append an `add`/`fix` section in `CHANGELOG.md`.
+4. **Release note**: For behavior-changing releases, bump version per Versioning rules and append an `add`/`fix` section in `CHANGELOG.md`. Skip version bumps for docs-only pushes.
 
 ## Future Extensions (Post-MVP)
 
