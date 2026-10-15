@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NavGPT</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header>
+    <div class="header-top">
+      <h1>NavGPT</h1>
+      <button id="rescan-btn" class="rescan-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 4v6h-6M1 20v-6h6"></path>
+          <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"></path>
+        </svg>
+        Rescan
+      </button>
+    </div>
+    <div class="controls">
+      <div class="search-wrapper">
+        <input type="text" id="search-input" placeholder="Search in conversation..." autocomplete="off">
+      </div>
+      <div class="filters">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="user">User</button>
+        <button class="filter-btn" data-filter="assistant">AI</button>
+        <button class="filter-btn" data-filter="hasCode">Code</button>
+        <button class="filter-btn" data-filter="starred">Starred</button>
+      </div>
+      <div id="status" class="stats">Initializing...</div>
+    </div>
+  </header>
+
+  <ul id="message-list">
+    <!-- Messages populated by main.ts -->
+  </ul>
+
+  <div id="empty-state" class="empty-state" style="display: none;">
+    No messages found matching your criteria.
+  </div>
+
+  <div id="version-tag" style="padding: 10px; font-size: 0.6rem; color: #999; text-align: center; border-top: 1px solid #eee;">
+    NavGPT v1.1 - Force Reverse Build
+  </div>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>
