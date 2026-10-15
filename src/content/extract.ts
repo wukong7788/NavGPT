@@ -4,12 +4,15 @@ import {
   queryTurns,
   parseRoleFromUnitKey,
   resolveDomMessageId,
+  isMessageUnitKey,
 } from "./selectors";
+
+const ROLE_LABEL_RE = /^(你说：|ChatGPT 说：|You said:|ChatGPT said:)\s*/i;
 
 export function extractMessages(): ChatMessageRecord[] {
   const turns = queryTurns();
 
-  console.log(`NavGPT Debug: Found ${turns.length} turns in DOM.`);
+  console.log(`NavGPT Debug: Found ${turns.length} turns in active conversation.`);
 
   const records: ChatMessageRecord[] = [];
 
@@ -26,31 +29,50 @@ export function extractMessages(): ChatMessageRecord[] {
   }
 
   turns.forEach((turn, index) => {
+    const unitKey = turn.getAttribute(SELECTORS.UNIT_KEY_ATTR) || "";
     const role = resolveRole(turn);
+
+    // Reject chrome / non-message nodes that slipped through fallbacks.
+    const looksLikeMessage =
+      isMessageUnitKey(unitKey) ||
+      !!turn.getAttribute("data-testid")?.startsWith("conversation-turn-") ||
+      !!turn.getAttribute(SELECTORS.ROLE_ATTR) ||
+      !!turn.querySelector(`[${SELECTORS.ROLE_ATTR}]`) ||
+      !!turn.querySelector(SELECTORS.USER_BUBBLE) ||
+      !!turn.querySelector(SELECTORS.ASSISTANT_MARKDOWN);
+    if (!looksLikeMessage) return;
 
     const contentEl = resolveContentElement(turn, role);
     if (!contentEl) {
       console.log(`NavGPT Debug: Turn ${index} has no content element matched.`);
     }
 
-    let fullText = extractText(contentEl) || extractText(turn);
+    let fullText = extractText(contentEl);
+    if (!fullText) fullText = extractText(turn);
+    fullText = fullText.replace(ROLE_LABEL_RE, "").trim();
 
-    // Strip screen-reader role labels that ChatGPT injects into units
-    fullText = fullText
-      .replace(/^(你说：|ChatGPT 说：|You said:|ChatGPT said:)\s*/i, "")
-      .trim();
-
-    if (!fullText && role === "unknown") return;
+    // Stale / still-loading assistant shells often only contain the sr-only label.
+    if (!fullText) {
+      if (role === "assistant") {
+        // Keep a short placeholder so the row exists for jump once content paints,
+        // but mark empty so navigation retry can wait for real text.
+        fullText = "";
+      } else if (role === "unknown") {
+        return;
+      }
+    }
 
     const hasCode = !!turn.querySelector(SELECTORS.CODE_BLOCK);
-
-    const unitKey = turn.getAttribute(SELECTORS.UNIT_KEY_ATTR) || "";
     const turnTestId = turn.getAttribute("data-testid") || "";
     const domMessageId = resolveDomMessageId(turn);
 
     let stableId = `msg-${conversationId}-${domMessageId || unitKey || turnTestId || index}`;
+    if (unitKey) {
+      // Unit keys can repeat across chats; keep conversation + unit for stability.
+      stableId = `msg-${conversationId}-${unitKey}`;
+    }
 
-    if (conversationId === "default" && !domMessageId) {
+    if (conversationId === "default" && !domMessageId && !unitKey) {
       const contentHash = simpleHash(fullText.substring(0, 100));
       stableId = `msg-def-${contentHash}-${index}`;
     }
@@ -58,18 +80,35 @@ export function extractMessages(): ChatMessageRecord[] {
     records.push({
       id: stableId,
       index: index + 1,
+      listIndex: index,
       role,
-      preview: getPreview(fullText),
+      preview: fullText ? getPreview(fullText) : role === "assistant" ? "(loading…)" : "(empty)",
       fullText,
       hasCode,
       url,
       conversationId,
       conversationTitle,
       domMessageId: domMessageId || undefined,
+      domUnitKey: unitKey || undefined,
     });
   });
 
   return records;
+}
+
+export function extractionLooksReady(messages: ChatMessageRecord[]): boolean {
+  if (messages.length === 0) return false;
+
+  // Sidebar chrome must never count as "ready".
+  const real = messages.filter((m) => m.domUnitKey || m.domMessageId);
+  if (real.length === 0) return false;
+
+  const assistants = real.filter((m) => m.role === "assistant");
+  if (assistants.length === 0) {
+    // User-only turns are ok once we have real unit keys.
+    return real.every((m) => !!m.domUnitKey || m.fullText.trim().length > 0);
+  }
+  return assistants.every((m) => m.fullText.trim().length > 0);
 }
 
 function resolveRole(turn: Element): ChatMessageRecord["role"] {
@@ -126,7 +165,11 @@ function extractText(el: Element | null): string {
     return (cmContent.textContent || "").trim();
   }
 
-  return (el.textContent || "").trim();
+  // Prefer innerText so sr-only labels are less likely to dominate,
+  // but fall back to textContent when innerText is empty (hidden containers).
+  const inner = ("innerText" in el ? (el as HTMLElement).innerText : "") || "";
+  const text = inner.trim() || (el.textContent || "").trim();
+  return text;
 }
 
 function simpleHash(str: string): string {

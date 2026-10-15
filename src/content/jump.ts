@@ -1,4 +1,5 @@
-import { findMessageElement, queryTurns, SELECTORS } from "./selectors";
+import { ChatMessageRecord } from "../shared/types";
+import { findMessageElement, queryTurns } from "./selectors";
 
 function getScrollableParent(el: Element): Element | null {
   let parent = el.parentElement;
@@ -13,49 +14,55 @@ function getScrollableParent(el: Element): Element | null {
   return null;
 }
 
-export function jumpToMessage(messageId: string, domMessageId?: string) {
-  let target: Element | null = null;
-
-  if (domMessageId) {
-    target = findMessageElement(domMessageId);
+export function jumpToMessage(
+  messageId: string,
+  domMessageId?: string,
+  opts?: {
+    domUnitKey?: string;
+    role?: ChatMessageRecord["role"];
+    listIndex?: number;
   }
+) {
+  let target = findMessageElement(domMessageId || "", {
+    unitKey: opts?.domUnitKey,
+    role: opts?.role,
+    listIndex: opts?.listIndex,
+  });
 
-  // Fall back to index suffix on generated ids: msg-...-<index>
+  // Legacy fallback: last numeric segment as list index (rarely valid for UUID ids)
   if (!target) {
     const parts = messageId.split("-");
     const index = parseInt(parts[parts.length - 1], 10);
-
     if (!isNaN(index)) {
       const turns = queryTurns();
-      if (index >= 0 && index < turns.length) {
-        target = turns[index];
-      }
+      if (index >= 0 && index < turns.length) target = turns[index];
     }
   }
 
-  if (target) {
-    const scrollContainer = getScrollableParent(target);
+  if (!target) {
+    console.warn("Jump target not found for message:", messageId, opts);
+    return;
+  }
 
-    const headerEl =
-      document.querySelector("nav") ||
-      document.querySelector("[class*='sticky']") ||
-      document.querySelector("header");
-    const offset = headerEl ? headerEl.getBoundingClientRect().bottom + 8 : 60;
+  const scrollContainer = getScrollableParent(target);
 
-    if (scrollContainer) {
-      const targetRect = target.getBoundingClientRect();
-      const containerRect = scrollContainer.getBoundingClientRect();
-      const scrollTarget = scrollContainer.scrollTop + targetRect.top - containerRect.top - offset;
-      scrollContainer.scrollTo({ top: scrollTarget, behavior: "smooth" });
-    } else {
-      const y = target.getBoundingClientRect().top + window.scrollY - offset;
-      window.scrollTo({ top: y, behavior: "smooth" });
-    }
+  const headerEl =
+    document.querySelector("nav") ||
+    document.querySelector("[class*='sticky']") ||
+    document.querySelector("header");
+  const offset = headerEl ? headerEl.getBoundingClientRect().bottom + 8 : 60;
 
-    highlightElement(target as HTMLElement);
+  if (scrollContainer) {
+    const targetRect = target.getBoundingClientRect();
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const scrollTarget = scrollContainer.scrollTop + targetRect.top - containerRect.top - offset;
+    scrollContainer.scrollTo({ top: scrollTarget, behavior: "smooth" });
   } else {
-    console.warn("Jump target not found for message:", messageId);
+    const y = target.getBoundingClientRect().top + window.scrollY - offset;
+    window.scrollTo({ top: y, behavior: "smooth" });
   }
+
+  highlightElement(target as HTMLElement);
 }
 
 function highlightElement(el: HTMLElement) {
@@ -120,10 +127,5 @@ export function injectStyles() {
 }
 
 export function hasExtractableMessages(): boolean {
-  return (
-    document.querySelectorAll(SELECTORS.MESSAGE_UNIT).length > 0 ||
-    document.querySelectorAll(SELECTORS.TURN).length > 0 ||
-    document.querySelectorAll(SELECTORS.MESSAGE_TURN).length > 0 ||
-    document.querySelectorAll(SELECTORS.MESSAGE_TURN_NEW).length > 0
-  );
+  return queryTurns().length > 0;
 }

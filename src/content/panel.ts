@@ -1,4 +1,5 @@
 import { ChatMessageRecord } from "../shared/types";
+import { openXShare } from "../shared/share";
 import { extractMessages } from "./extract";
 import { jumpToMessage } from "./jump";
 import { PANEL_STYLES } from "./panelStyles";
@@ -74,7 +75,7 @@ export function initFloatingPanel() {
       </div>
       <ul class="list" data-role="list"></ul>
       <div class="empty" data-role="empty">No messages found matching your criteria.</div>
-      <div class="footer">Only on ChatGPT · v1.1.1</div>
+      <div class="footer">Only on ChatGPT · v1.2.0</div>
     </aside>
   `;
 
@@ -254,6 +255,10 @@ export function setPanelMessages(messages: ChatMessageRecord[]) {
   applyFiltersAndRender();
 }
 
+export function setPanelStatus(text: string) {
+  if (els) els.status.textContent = text;
+}
+
 function loadGlobalStars() {
   chrome.storage.local.get(["global_stars"], (result) => {
     globalStarredMessages = (result.global_stars as ChatMessageRecord[]) || [];
@@ -342,8 +347,9 @@ function renderMessages(messages: ChatMessageRecord[]) {
     const li = document.createElement("li");
     li.className = "item";
 
-    const roleClass = msg.role === "user" ? "role-user" : "role-assistant";
-    const roleLabel = msg.role === "assistant" ? "AI" : "User";
+    const roleClass =
+      msg.role === "user" ? "role-user" : msg.role === "assistant" ? "role-assistant" : "role-user";
+    const roleLabel = msg.role === "assistant" ? "AI" : msg.role === "user" ? "User" : "?";
     const starred = msg.isStarred || starredMessageIds.has(msg.id);
 
     li.innerHTML = `
@@ -353,18 +359,25 @@ function renderMessages(messages: ChatMessageRecord[]) {
           <span class="role ${roleClass}">${roleLabel}</span>
           <span class="index">#${msg.index}</span>
         </div>
-        <button class="star-btn ${starred ? "active" : ""}" type="button" data-star="${escapeHtml(msg.id)}" aria-label="Star">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="${starred ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2">
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-          </svg>
-        </button>
+        <div class="item-actions">
+          <button class="share-btn" type="button" data-share-x="${escapeHtml(msg.id)}" title="发到 X" aria-label="Share to X">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.727-8.835L1.254 2.25H8.08l4.253 5.622L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z"/>
+            </svg>
+          </button>
+          <button class="star-btn ${starred ? "active" : ""}" type="button" data-star="${escapeHtml(msg.id)}" aria-label="Star">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="${starred ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+            </svg>
+          </button>
+        </div>
       </div>
       <div class="preview">${escapeHtml(msg.preview)}</div>
       ${msg.hasCode ? '<div class="code-badge">{ } Contains code</div>' : ""}
     `;
 
     li.addEventListener("click", (e) => {
-      if ((e.target as HTMLElement).closest(".star-btn")) return;
+      if ((e.target as HTMLElement).closest(".star-btn, .share-btn")) return;
 
       els!.list.querySelectorAll(".item").forEach((item) => item.classList.remove("active"));
       li.classList.add("active");
@@ -377,6 +390,9 @@ function renderMessages(messages: ChatMessageRecord[]) {
               url: msg.url,
               messageId: msg.id,
               domMessageId: msg.domMessageId,
+              domUnitKey: msg.domUnitKey,
+              role: msg.role,
+              listIndex: msg.listIndex,
             },
           },
           () => {
@@ -386,12 +402,21 @@ function renderMessages(messages: ChatMessageRecord[]) {
         return;
       }
 
-      jumpToMessage(msg.id, msg.domMessageId);
+      jumpToMessage(msg.id, msg.domMessageId, {
+        domUnitKey: msg.domUnitKey,
+        role: msg.role,
+        listIndex: msg.listIndex,
+      });
     });
 
     li.querySelector(".star-btn")?.addEventListener("click", (e) => {
       e.stopPropagation();
       toggleStar(msg.id);
+    });
+
+    li.querySelector(".share-btn")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openXShare(msg);
     });
 
     els.list.appendChild(li);

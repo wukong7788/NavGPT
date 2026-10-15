@@ -214,16 +214,26 @@ export const PANEL_STYLES = `
 
 .index { font-size: 11px; color: var(--muted); }
 
-.star-btn {
+.item-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.star-btn, .share-btn {
   background: none;
   border: none;
   padding: 4px;
   cursor: pointer;
   color: var(--muted);
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
 }
 
 .star-btn.active, .star-btn:hover { color: #ffb800; }
+.share-btn:hover { color: #1d9bf0; background: var(--hover); }
 
 .preview {
   font-size: 13px;
