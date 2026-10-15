@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "NavGPT - Chat Navigator",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "Fast navigation for ChatGPT conversations.",
-  "permissions": ["sidePanel", "storage"],
+  "permissions": ["storage"],
   "host_permissions": ["https://chatgpt.com/*"],
   "icons": {
     "16": "icon16.png",
@@ -11,15 +11,12 @@
     "128": "icon128.png"
   },
   "action": {
-    "default_title": "NavGPT",
+    "default_title": "Toggle NavGPT",
     "default_icon": {
       "16": "icon16.png",
       "48": "icon48.png",
       "128": "icon128.png"
     }
-  },
-  "side_panel": {
-    "default_path": "sidepanel/index.html"
   },
   "background": {
     "service_worker": "background/index.ts",

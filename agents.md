@@ -51,7 +51,7 @@ The project should prioritize robustness over flashy features.
 
 ### In Scope (MVP)
 - Chrome Extension Manifest V3
-- Side panel UI
+- Floating panel UI injected only on ChatGPT pages (not Chrome side panel)
 - Content script that scans conversation messages
 - Build local index of messages
 - Click-to-scroll navigation
@@ -76,9 +76,10 @@ The project should prioritize robustness over flashy features.
 ### 1. Product / UX Agent
 Responsible for:
 - defining minimal useful workflow
-- making sure side panel interaction is efficient
+- making sure floating-panel interaction is efficient
 - reducing clutter in navigation UI
 - ensuring long-chat usage is smooth
+- keeping the panel ChatGPT-only (no leftover UI on other sites)
 
 Deliverables:
 - feature priority
@@ -89,7 +90,7 @@ Deliverables:
 Responsible for:
 - project structure
 - MV3 design
-- communication between side panel and content script
+- communication between background action click and content-script floating panel
 - permission minimization
 - storage and state boundaries
 
@@ -162,30 +163,28 @@ Deliverables:
 
 ### Core Components
 - `manifest.json`
-- `src/content/`
-- `src/sidepanel/`
+- `src/content/` (extraction, jump, floating panel)
 - `src/shared/`
 - `src/background/`
 
 ### Responsibilities
 
 #### Content Script
-- runs on ChatGPT conversation pages
-- scans DOM
-- extracts messages
-- creates lightweight message index
+- runs only on `https://chatgpt.com/*`
+- scans DOM and extracts messages
+- mounts the floating navigator panel (Shadow DOM)
 - performs scroll/jump actions
-- responds to side panel requests
+- handles toggle / rescan / search / filter UI locally
 
-#### Side Panel
+#### Floating Panel
+- page-local UI (FAB + panel), never a browser-global side panel
 - displays searchable message list
 - renders filters
-- sends jump requests
-- triggers rescan
+- jumps within the current page
 - shows counts/status
 
 #### Background / Service Worker
-- mediates extension events if needed
+- toggles the floating panel via extension action click on ChatGPT tabs
 - keeps logic minimal
 - should not become a dumping ground for app logic
 
@@ -221,15 +220,17 @@ Rules:
 - avoid storing unnecessary DOM-heavy structures
 
 ## UI Requirements
-Side Panel MVP
+Floating Panel MVP (ChatGPT-only)
 
 Must include:
 
+page-local FAB to open/close the panel
 search input
 filter toggles
 message count
 rescan button
 scrollable result list
+close control
 
 Each item should show:
 
@@ -243,13 +244,14 @@ Interaction:
 click item => jump to message
 active message => visible highlight
 search should feel instant on normal conversation sizes
+panel must not appear on non-ChatGPT sites
 
 ## Robustness Requirements
 1. Do not assume exact DOM class names remain unchanged forever.
 2. Centralize selectors and DOM probing logic.
 3. Add fallback extraction logic.
 4. Support manual rescan.
-5. If parsing fails, surface a compact diagnostic state in side panel.
+5. If parsing fails, surface a compact diagnostic state in the floating panel.
 6. Avoid extension crashes on partial extraction failures.
 
 ## Coding Standards
@@ -282,7 +284,7 @@ At minimum manually verify:
 MVP is done only if:
 
 extension loads successfully in Chrome
-side panel opens on ChatGPT conversation pages
+floating panel appears only on ChatGPT conversation pages
 conversation messages can be indexed
 clicking an item scrolls to the correct message
 keyword search works
@@ -291,11 +293,26 @@ code-message filter works
 manual rescan works
 no severe UI lag on long conversations
 
+## Versioning
+
+Semver-style `MAJOR.MINOR.PATCH`, but with project-specific bump rules:
+
+| 变更类型 | 版本增量 | 示例 |
+|---------|---------|------|
+| 大版本（新功能、重要适配、行为面较大的变更） | `+0.1.0` | `1.0.1` → `1.1.0` |
+| 小版本（bug fix、小改动、文档/测试） | `+0.0.1` | `1.0.0` → `1.0.1` |
+
+Rules:
+1. Keep `package.json` and `src/manifest.json` version in sync.
+2. Every version bump must update `CHANGELOG.md` using `add` / `fix` entries (`change` optional).
+3. ChatGPT DOM 适配：若仅为修复抓取/跳转失效 → `+0.0.1`；若引入新导航能力或大范围架构调整 → `+0.1.0`.
+
 ## Development Workflow
 
 1. **Rebuild**: After making changes, run `bun run build` to recompile the project.
 2. **Reload**: Go to `chrome://extensions/` and click the reload icon for the NavGPT extension.
 3. **Refresh**: Refresh the ChatGPT page to apply changes.
+4. **Release note**: Bump version per Versioning rules and append an `add`/`fix` section in `CHANGELOG.md`.
 
 ## Future Extensions (Post-MVP)
 

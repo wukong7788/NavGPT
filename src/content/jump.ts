@@ -1,4 +1,4 @@
-import { queryTurns } from "./selectors";
+import { findMessageElement, queryTurns, SELECTORS } from "./selectors";
 
 function getScrollableParent(el: Element): Element | null {
   let parent = el.parentElement;
@@ -16,36 +16,30 @@ function getScrollableParent(el: Element): Element | null {
 export function jumpToMessage(messageId: string, domMessageId?: string) {
   let target: Element | null = null;
 
-  // 1. Prefer data-message-id for precise DOM targeting (most stable)
   if (domMessageId) {
-    const el = document.querySelector(`[data-message-id="${domMessageId}"]`);
-    if (el) {
-      // Prefer the outer turn container over the inner .text-message
-      target = el.closest("[data-testid^='conversation-turn-']") || el.closest(".text-message") || el;
-    }
+    target = findMessageElement(domMessageId);
   }
 
-  // 2. Fall back to index-based lookup
+  // Fall back to index suffix on generated ids: msg-...-<index>
   if (!target) {
     const parts = messageId.split("-");
     const index = parseInt(parts[parts.length - 1], 10);
 
-    if (isNaN(index)) {
-      console.error("Invalid message ID for jumping:", messageId);
-      return;
-    }
-
-    const turns = queryTurns();
-    if (index >= 0 && index < turns.length) {
-      target = turns[index];
+    if (!isNaN(index)) {
+      const turns = queryTurns();
+      if (index >= 0 && index < turns.length) {
+        target = turns[index];
+      }
     }
   }
 
   if (target) {
     const scrollContainer = getScrollableParent(target);
 
-    // Sticky header offset
-    const headerEl = document.querySelector("nav") || document.querySelector("[class*='sticky']") || document.querySelector("header");
+    const headerEl =
+      document.querySelector("nav") ||
+      document.querySelector("[class*='sticky']") ||
+      document.querySelector("header");
     const offset = headerEl ? headerEl.getBoundingClientRect().bottom + 8 : 60;
 
     if (scrollContainer) {
@@ -65,7 +59,6 @@ export function jumpToMessage(messageId: string, domMessageId?: string) {
 }
 
 function highlightElement(el: HTMLElement) {
-  // Add the class for the animation (defined in content style)
   el.classList.add("navgpt-highlight");
 
   setTimeout(() => {
@@ -73,11 +66,10 @@ function highlightElement(el: HTMLElement) {
   }, 2000);
 }
 
-// Inject static styles for the highlight and layout fixes
 export function injectStyles() {
   const STYLE_ID = "navgpt-styles";
   let style = document.getElementById(STYLE_ID) as HTMLStyleElement;
-  
+
   if (!style) {
     style = document.createElement("style");
     style.id = STYLE_ID;
@@ -94,8 +86,6 @@ export function injectStyles() {
       border-left: 4px solid #10a37f !important;
     }
 
-    /* SPECIFIC FIX FOR CODEMIRROR (ChatGPT's new code viewer) */
-    /* We target multiple nested levels to ensure the wrap sticks */
     .cm-editor, .cm-scroller, .cm-content, .cm-line {
       white-space: pre-wrap !important;
       word-break: break-all !important;
@@ -112,7 +102,6 @@ export function injectStyles() {
       overflow-wrap: anywhere !important;
     }
 
-    /* Force parent containers to not clip or provide their own scrolls */
     .overflow-x-hidden {
       overflow-x: visible !important;
     }
@@ -128,4 +117,13 @@ export function injectStyles() {
       word-break: break-all !important;
     }
   `;
+}
+
+export function hasExtractableMessages(): boolean {
+  return (
+    document.querySelectorAll(SELECTORS.MESSAGE_UNIT).length > 0 ||
+    document.querySelectorAll(SELECTORS.TURN).length > 0 ||
+    document.querySelectorAll(SELECTORS.MESSAGE_TURN).length > 0 ||
+    document.querySelectorAll(SELECTORS.MESSAGE_TURN_NEW).length > 0
+  );
 }

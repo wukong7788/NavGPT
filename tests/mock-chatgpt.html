@@ -2,22 +2,30 @@
 <html>
 <body>
   <main>
-    <div data-testid="conversation-turn-1" data-message-author-role="user">
-      <div class="flex-col gap-1">
-        <div class="markdown">Hello, can you help me with a Chrome extension?</div>
+    <!-- Current ChatGPT DOM (2026) -->
+    <div data-turn-key="turn-aaa">
+      <div class="w-full" data-content-search-unit-key="fallback-turn-0:0:user">
+        <div data-user-message-bubble="true">
+          <div class="text-size-chat whitespace-pre-wrap">Hello, can you help me with a Chrome extension?</div>
+        </div>
       </div>
-    </div>
-    <div data-testid="conversation-turn-2" data-message-author-role="assistant">
-      <div class="flex-col gap-1">
-        <div class="markdown">
+      <div
+        data-content-search-unit-key="fallback-turn-0:2:assistant"
+        data-chatgpt-search-message-ids="msg-bbb msg-bbb"
+        data-dil-message-id="msg-bbb"
+      >
+        <h4 class="sr-only" data-conversation-role="assistant">ChatGPT 说：</h4>
+        <div data-markdown-text-style="true" class="MarkdownRoot">
           Sure! Here is some code:
           <pre><code>console.log("Hello World");</code></pre>
         </div>
       </div>
     </div>
-    <div data-testid="conversation-turn-3" data-message-author-role="user">
-      <div class="flex-col gap-1">
-        <div class="markdown">Thanks! What about a very long message that should be truncated in the preview? This is a test for the preview logic to see if it correctly handles long strings of text and adds the ellipsis at the end as expected.</div>
+    <div data-turn-key="turn-ccc">
+      <div class="w-full" data-content-search-unit-key="fallback-turn-1:0:user">
+        <div data-user-message-bubble="true">
+          <div class="text-size-chat whitespace-pre-wrap">Thanks! What about a very long message that should be truncated in the preview? This is a test for the preview logic to see if it correctly handles long strings of text and adds the ellipsis at the end as expected.</div>
+        </div>
       </div>
     </div>
   </main>
