@@ -51,7 +51,7 @@ The project should prioritize robustness over flashy features.
 
 ### In Scope (MVP)
 - Chrome Extension Manifest V3
-- Floating panel UI injected only on ChatGPT pages (not Chrome side panel)
+- Floating panel UI injected on ChatGPT and Grok pages (not Chrome side panel)
 - Content script that scans conversation messages
 - Build local index of messages
 - Click-to-scroll navigation
@@ -60,12 +60,13 @@ The project should prioritize robustness over flashy features.
   - user messages
   - assistant messages
   - messages containing code blocks
+- Grok project link sync for X → Grok send flow
 
 ### Out of Scope (MVP)
 - Cloud sync
 - Remote backend
 - AI-generated summaries
-- Multi-site support beyond ChatGPT
+- Multi-site support beyond ChatGPT / Grok / X
 - Export to external services
 - Browser support beyond Chrome-compatible browsers
 
@@ -79,7 +80,7 @@ Responsible for:
 - making sure floating-panel interaction is efficient
 - reducing clutter in navigation UI
 - ensuring long-chat usage is smooth
-- keeping the panel ChatGPT-only (no leftover UI on other sites)
+- keeping the panel only on ChatGPT / Grok (no leftover UI on other sites)
 
 Deliverables:
 - feature priority
@@ -170,11 +171,12 @@ Deliverables:
 ### Responsibilities
 
 #### Content Script
-- runs only on `https://chatgpt.com/*`
+- runs on `https://chatgpt.com/*` and `https://grok.com/*` (plus X for Grok button)
 - scans DOM and extracts messages
 - mounts the floating navigator panel (Shadow DOM)
 - performs scroll/jump actions
 - handles toggle / rescan / search / filter UI locally
+- on Grok: sync project name/url into local storage
 
 #### Floating Panel
 - page-local UI (FAB + panel), never a browser-global side panel
@@ -184,7 +186,7 @@ Deliverables:
 - shows counts/status
 
 #### Background / Service Worker
-- toggles the floating panel via extension action click on ChatGPT tabs
+- toggles the floating panel via extension action click on ChatGPT / Grok tabs
 - keeps logic minimal
 - should not become a dumping ground for app logic
 
@@ -284,7 +286,7 @@ At minimum manually verify:
 MVP is done only if:
 
 extension loads successfully in Chrome
-floating panel appears only on ChatGPT conversation pages
+floating panel appears on ChatGPT / Grok conversation pages
 conversation messages can be indexed
 clicking an item scrolls to the correct message
 keyword search works

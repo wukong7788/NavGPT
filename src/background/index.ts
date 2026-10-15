@@ -1,4 +1,8 @@
-const CHATGPT_HOST = "chatgpt.com";
+const PANEL_HOSTS = ["chatgpt.com", "grok.com"];
+
+function isPanelHost(hostname: string): boolean {
+  return PANEL_HOSTS.some((host) => hostname === host || hostname.endsWith(`.${host}`));
+}
 
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab.id || !tab.url) return;
@@ -10,9 +14,8 @@ chrome.action.onClicked.addListener(async (tab) => {
     return;
   }
 
-  if (hostname !== CHATGPT_HOST && !hostname.endsWith(`.${CHATGPT_HOST}`)) {
-    // Only meaningful on ChatGPT; keep quiet on other sites.
-    console.log("NavGPT: Floating panel is only available on chatgpt.com");
+  if (!isPanelHost(hostname)) {
+    console.log("NavGPT: Floating panel is only available on chatgpt.com / grok.com");
     return;
   }
 

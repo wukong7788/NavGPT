@@ -1,7 +1,7 @@
 {
   "name": "navgpt",
-  "version": "1.2.0",
-  "description": "Chrome extension for fast navigation in long ChatGPT conversations",
+  "version": "1.6.0",
+  "description": "Chrome extension for ChatGPT/Grok navigation and custom Grok actions on X posts",
   "main": "index.js",
   "scripts": {
     "dev": "vite",

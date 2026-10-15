@@ -1,13 +1,40 @@
 import { ChatMessageRecord } from "../shared/types";
 import { openXShare } from "../shared/share";
-import { extractMessages } from "./extract";
-import { jumpToMessage } from "./jump";
+import { extractMessages as defaultExtract } from "./extract";
+import { jumpToMessage as defaultJump } from "./jump";
 import { PANEL_STYLES } from "./panelStyles";
 
 const HOST_ID = "navgpt-floating-root";
 const FAB_POSITION_KEY = "fab_position";
 const FAB_SIZE = 44;
 const DRAG_THRESHOLD_PX = 5;
+
+export type PanelJumpOpts = {
+  domUnitKey?: string;
+  role?: ChatMessageRecord["role"];
+  listIndex?: number;
+};
+
+export type FloatingPanelConfig = {
+  extractMessages?: () => ChatMessageRecord[];
+  jumpToMessage?: (messageId: string, domMessageId?: string, opts?: PanelJumpOpts) => void;
+  /** Extra footer text, e.g. site name */
+  siteLabel?: string;
+  /** Optional async project sync (Grok). Returns status text. */
+  syncProjects?: () => Promise<string>;
+  showShareToX?: boolean;
+};
+
+let panelConfig: FloatingPanelConfig = {
+  extractMessages: defaultExtract,
+  jumpToMessage: defaultJump,
+  siteLabel: "ChatGPT",
+  showShareToX: true,
+};
+
+export function configureFloatingPanel(config: FloatingPanelConfig) {
+  panelConfig = { ...panelConfig, ...config };
+}
 
 type FabPosition = { left: number; top: number };
 
@@ -53,6 +80,9 @@ export function initFloatingPanel() {
         <div class="header-top">
           <h1 class="title">NavGPT</h1>
           <div class="header-actions">
+            <button class="rescan-btn" type="button" data-action="sync-projects" title="同步 Grok 项目" style="display:none">
+              同步项目
+            </button>
             <button class="rescan-btn" type="button" data-action="rescan" title="Rescan">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M23 4v6h-6M1 20v-6h6"></path>
@@ -75,7 +105,7 @@ export function initFloatingPanel() {
       </div>
       <ul class="list" data-role="list"></ul>
       <div class="empty" data-role="empty">No messages found matching your criteria.</div>
-      <div class="footer">Only on ChatGPT · v1.2.0</div>
+      <div class="footer" data-role="footer">NavGPT</div>
     </aside>
   `;
 
@@ -90,6 +120,32 @@ export function initFloatingPanel() {
     empty: shadow.querySelector('[data-role="empty"]') as HTMLElement,
     search: shadow.querySelector(".search") as HTMLInputElement,
   };
+
+  const footer = shadow.querySelector('[data-role="footer"]') as HTMLElement | null;
+  if (footer) {
+    footer.textContent = `${panelConfig.siteLabel || "NavGPT"} · v1.6.0`;
+  }
+
+  const syncBtn = shadow.querySelector('[data-action="sync-projects"]') as HTMLButtonElement | null;
+  if (syncBtn) {
+    syncBtn.style.display = panelConfig.syncProjects ? "" : "none";
+    syncBtn.addEventListener("click", async () => {
+      if (!panelConfig.syncProjects) return;
+      syncBtn.disabled = true;
+      const prev = syncBtn.textContent;
+      syncBtn.textContent = "同步中…";
+      try {
+        const status = await panelConfig.syncProjects();
+        setPanelStatus(status);
+      } catch (err) {
+        console.error(err);
+        setPanelStatus("同步失败");
+      } finally {
+        syncBtn.disabled = false;
+        syncBtn.textContent = prev || "同步项目";
+      }
+    });
+  }
 
   els.fab.addEventListener("click", (e) => {
     if (suppressFabClick) {
@@ -270,7 +326,8 @@ function loadGlobalStars() {
 function rescan() {
   if (els) els.status.textContent = "Scanning...";
   try {
-    const messages = extractMessages();
+    const extract = panelConfig.extractMessages || defaultExtract;
+    const messages = extract();
     setPanelMessages(messages);
   } catch (err) {
     console.error("NavGPT: rescan failed", err);
@@ -360,11 +417,15 @@ function renderMessages(messages: ChatMessageRecord[]) {
           <span class="index">#${msg.index}</span>
         </div>
         <div class="item-actions">
-          <button class="share-btn" type="button" data-share-x="${escapeHtml(msg.id)}" title="发到 X" aria-label="Share to X">
+          ${
+            panelConfig.showShareToX !== false
+              ? `<button class="share-btn" type="button" data-share-x="${escapeHtml(msg.id)}" title="发到 X" aria-label="Share to X">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.727-8.835L1.254 2.25H8.08l4.253 5.622L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z"/>
             </svg>
-          </button>
+          </button>`
+              : ""
+          }
           <button class="star-btn ${starred ? "active" : ""}" type="button" data-star="${escapeHtml(msg.id)}" aria-label="Star">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="${starred ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
@@ -402,7 +463,8 @@ function renderMessages(messages: ChatMessageRecord[]) {
         return;
       }
 
-      jumpToMessage(msg.id, msg.domMessageId, {
+      const jump = panelConfig.jumpToMessage || defaultJump;
+      jump(msg.id, msg.domMessageId, {
         domUnitKey: msg.domUnitKey,
         role: msg.role,
         listIndex: msg.listIndex,
