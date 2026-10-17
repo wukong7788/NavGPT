@@ -35,6 +35,7 @@ configureFloatingPanel({
   jumpToMessage: jumpToGrokMessage,
   siteLabel: "Grok",
   showShareToX: false,
+  syncProjectsLabel: "同步 Grok 项目",
   syncProjects: async () => {
     const result = await syncProjectsFromPage();
     if (result.count === 0) {
@@ -44,7 +45,7 @@ configureFloatingPanel({
     if (result.added) parts.push(`新增 ${result.added}`);
     if (result.updated) parts.push(`更新 ${result.updated}`);
     if (result.removed) parts.push(`清理 ${result.removed}`);
-    return parts.join(" · ") + "（X 发帖弹窗可直接选用）";
+    return parts.join(" · ");
   },
 });
 

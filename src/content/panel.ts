@@ -20,8 +20,10 @@ export type FloatingPanelConfig = {
   jumpToMessage?: (messageId: string, domMessageId?: string, opts?: PanelJumpOpts) => void;
   /** Extra footer text, e.g. site name */
   siteLabel?: string;
-  /** Optional async project sync (Grok). Returns status text. */
+  /** Optional async project sync. Returns status text. */
   syncProjects?: () => Promise<string>;
+  /** Sync button label / title (e.g. 同步 Grok 项目) */
+  syncProjectsLabel?: string;
   showShareToX?: boolean;
 };
 
@@ -72,15 +74,21 @@ export function initFloatingPanel() {
   const style = document.createElement("style");
   style.textContent = PANEL_STYLES;
 
+  const iconUrl = chrome.runtime.getURL("icon48.png");
   const wrap = document.createElement("div");
   wrap.innerHTML = `
-    <button class="fab" type="button" aria-label="Toggle NavGPT" aria-expanded="false" title="NavGPT">Nav</button>
+    <button class="fab" type="button" aria-label="Toggle NavGPT" aria-expanded="false" title="NavGPT">
+      <img src="${iconUrl}" alt="" width="44" height="44" draggable="false" />
+    </button>
     <aside class="panel" role="dialog" aria-label="NavGPT navigator">
       <div class="header">
         <div class="header-top">
-          <h1 class="title">NavGPT</h1>
+          <div class="title-row">
+            <img src="${iconUrl}" alt="" width="20" height="20" draggable="false" />
+            <h1 class="title">NavGPT</h1>
+          </div>
           <div class="header-actions">
-            <button class="rescan-btn" type="button" data-action="sync-projects" title="同步 Grok 项目" style="display:none">
+            <button class="rescan-btn" type="button" data-action="sync-projects" title="同步项目" style="display:none">
               同步项目
             </button>
             <button class="rescan-btn" type="button" data-action="rescan" title="Rescan">
@@ -103,6 +111,7 @@ export function initFloatingPanel() {
         </div>
         <div class="stats" data-role="status">Ready</div>
       </div>
+      <div class="toast" data-role="toast" role="status" aria-live="polite"></div>
       <ul class="list" data-role="list"></ul>
       <div class="empty" data-role="empty">No messages found matching your criteria.</div>
       <div class="footer" data-role="footer">NavGPT</div>
@@ -123,26 +132,36 @@ export function initFloatingPanel() {
 
   const footer = shadow.querySelector('[data-role="footer"]') as HTMLElement | null;
   if (footer) {
-    footer.textContent = `${panelConfig.siteLabel || "NavGPT"} · v1.6.0`;
+    const version = chrome.runtime.getManifest?.().version || "";
+    footer.textContent = version
+      ? `${panelConfig.siteLabel || "NavGPT"} · v${version}`
+      : panelConfig.siteLabel || "NavGPT";
   }
 
   const syncBtn = shadow.querySelector('[data-action="sync-projects"]') as HTMLButtonElement | null;
   if (syncBtn) {
+    // Keep button short so header actions stay one-line aligned; full name in tooltip.
+    const syncTitle = panelConfig.syncProjectsLabel || "同步项目";
+    const syncBtnText = "同步项目";
     syncBtn.style.display = panelConfig.syncProjects ? "" : "none";
+    syncBtn.textContent = syncBtnText;
+    syncBtn.title = syncTitle;
+    syncBtn.setAttribute("aria-label", syncTitle);
     syncBtn.addEventListener("click", async () => {
       if (!panelConfig.syncProjects) return;
       syncBtn.disabled = true;
-      const prev = syncBtn.textContent;
       syncBtn.textContent = "同步中…";
       try {
         const status = await panelConfig.syncProjects();
         setPanelStatus(status);
+        showPanelToast(status);
       } catch (err) {
         console.error(err);
         setPanelStatus("同步失败");
+        showPanelToast("同步失败，请稍后重试");
       } finally {
         syncBtn.disabled = false;
-        syncBtn.textContent = prev || "同步项目";
+        syncBtn.textContent = syncBtnText;
       }
     });
   }
@@ -312,7 +331,26 @@ export function setPanelMessages(messages: ChatMessageRecord[]) {
 }
 
 export function setPanelStatus(text: string) {
-  if (els) els.status.textContent = text;
+  if (!els) return;
+  els.status.textContent = text;
+  els.status.classList.add("flash");
+  window.setTimeout(() => els?.status.classList.remove("flash"), 2400);
+}
+
+let toastTimer: number | null = null;
+
+/** Brief banner under the header (e.g. after project sync). */
+export function showPanelToast(text: string, ms = 4500) {
+  if (!shadow) return;
+  const toast = shadow.querySelector('[data-role="toast"]') as HTMLElement | null;
+  if (!toast) return;
+  toast.textContent = text;
+  toast.classList.add("show");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    toast.classList.remove("show");
+    toastTimer = null;
+  }, ms);
 }
 
 function loadGlobalStars() {

@@ -1,4 +1,10 @@
-import { extractTweetText, getPrimaryTweetArticle, getStatusUrl } from "./extractTweet";
+import {
+  extractTweetTextFull,
+  getGrokButtonTargets,
+  getStatusUrl,
+  getStatusUrlFromElement,
+  isHistoryPage,
+} from "./extractTweet";
 import { openPromptEditor } from "./promptEditor";
 
 const BTN_ATTR = "data-navgpt-grok-btn";
@@ -45,12 +51,34 @@ function ensureStyles() {
       line-height: 1;
       vertical-align: middle;
       font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      flex-shrink: 0;
     }
     [${BTN_ATTR}]:hover {
       filter: brightness(1.08);
     }
     [${BTN_ATTR}]:active {
       filter: brightness(0.96);
+    }
+    /* History page: NavGPT icon button */
+    [${BTN_ATTR}][data-navgpt-icon="1"] {
+      padding: 0;
+      width: 32px;
+      min-width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: transparent;
+      box-shadow: none;
+    }
+    [${BTN_ATTR}][data-navgpt-icon="1"] img {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      display: block;
+      pointer-events: none;
+    }
+    [${BTN_ATTR}][data-navgpt-icon="1"]:hover {
+      filter: brightness(1.05);
+      background: rgba(16, 163, 127, 0.12);
     }
   `;
   document.documentElement.appendChild(style);
@@ -80,14 +108,14 @@ function getOfficialGrokWrapper(officialBtn: HTMLElement): HTMLElement {
   return officialBtn;
 }
 
-function findActionBar(article: HTMLElement): HTMLElement | null {
-  const official = findOfficialGrokButton(article);
+function findActionBar(host: HTMLElement): HTMLElement | null {
+  const official = findOfficialGrokButton(host);
   if (official) {
     const bar = official.closest('[role="group"]');
     if (bar instanceof HTMLElement) return bar;
   }
 
-  const groups = Array.from(article.querySelectorAll('[role="group"]')) as HTMLElement[];
+  const groups = Array.from(host.querySelectorAll('[role="group"]')) as HTMLElement[];
   const scored = groups
     .map((group) => {
       const labels = Array.from(group.querySelectorAll("button, a, div[role='button']"))
@@ -104,22 +132,38 @@ function findActionBar(article: HTMLElement): HTMLElement | null {
   return scored[0]?.group || null;
 }
 
-function createButton(): HTMLButtonElement {
+function createButton(host: HTMLElement): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.setAttribute(BTN_ATTR, "1");
-  btn.title = "编辑文案后发送给 Grok";
-  btn.setAttribute("aria-label", "编辑文案后发送给 Grok");
-  btn.textContent = "Grok";
+
+  const onHistory = isHistoryPage();
+  if (onHistory) {
+    btn.setAttribute("data-navgpt-icon", "1");
+    btn.title = "NavGPT：发送给 Grok / ChatGPT";
+    btn.setAttribute("aria-label", "NavGPT：发送给 Grok / ChatGPT");
+    const img = document.createElement("img");
+    img.src = chrome.runtime.getURL("icon48.png");
+    img.alt = "NavGPT";
+    img.width = 28;
+    img.height = 28;
+    img.draggable = false;
+    btn.appendChild(img);
+  } else {
+    btn.title = "编辑文案后发送给 Grok / ChatGPT";
+    btn.setAttribute("aria-label", "编辑文案后发送给 Grok / ChatGPT");
+    btn.textContent = "Grok";
+  }
 
   btn.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
 
-    const article = getPrimaryTweetArticle();
-    const text = extractTweetText(article);
-    const url = getStatusUrl();
-    void openPromptEditor({ tweetText: text, postUrl: url });
+    void (async () => {
+      const text = await extractTweetTextFull(host);
+      const url = getStatusUrlFromElement(host) || getStatusUrl();
+      await openPromptEditor({ tweetText: text, postUrl: url });
+    })();
   });
 
   return btn;
@@ -131,33 +175,44 @@ function insertBesideOfficial(official: HTMLElement, btn: HTMLButtonElement): bo
     official.insertAdjacentElement("afterend", btn);
     return true;
   }
-  // Place immediately to the right of the official Grok wrapper.
   wrapper.insertAdjacentElement("afterend", btn);
   return true;
 }
 
-export function syncGrokButton(): void {
-  ensureStyles();
+function injectButton(host: HTMLElement): void {
+  if (host.querySelector(`[${BTN_ATTR}]`)) return;
 
-  document.querySelectorAll(`[${BTN_ATTR}]`).forEach((el) => {
-    const article = el.closest("article");
-    const primary = getPrimaryTweetArticle();
-    if (!primary || article !== primary) el.remove();
-  });
-
-  const article = getPrimaryTweetArticle();
-  if (!article) return;
-  if (article.querySelector(`[${BTN_ATTR}]`)) return;
-
-  const btn = createButton();
-  const official = findOfficialGrokButton(article);
+  const btn = createButton(host);
+  const official = findOfficialGrokButton(host);
   if (official && insertBesideOfficial(official, btn)) return;
 
-  const bar = findActionBar(article);
+  const bar = findActionBar(host);
   if (bar) {
     bar.appendChild(btn);
     return;
   }
 
-  article.appendChild(btn);
+  // History rows: place at end of the row
+  host.appendChild(btn);
+}
+
+export function syncGrokButton(): void {
+  ensureStyles();
+
+  const targets = getGrokButtonTargets();
+  const targetSet = new Set(targets);
+
+  document.querySelectorAll(`[${BTN_ATTR}]`).forEach((el) => {
+    const host =
+      (el.closest("article") as HTMLElement | null) ||
+      (el.parentElement as HTMLElement | null);
+    if (!host || !targetSet.has(host)) {
+      const stillValid = targets.some((t) => t.contains(el));
+      if (!stillValid) el.remove();
+    }
+  });
+
+  for (const host of targets) {
+    injectButton(host);
+  }
 }

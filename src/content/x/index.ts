@@ -1,4 +1,4 @@
-import { isStatusPage } from "./extractTweet";
+import { isGrokActionPage } from "./extractTweet";
 import { syncGrokButton } from "./grokButton";
 
 console.log("NavGPT X content script loaded.");
@@ -9,7 +9,7 @@ let lastUrl = location.href;
 function scheduleSync(reason: string) {
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = window.setTimeout(() => {
-    if (!isStatusPage()) {
+    if (!isGrokActionPage()) {
       document.querySelectorAll("[data-navgpt-grok-btn]").forEach((el) => el.remove());
       return;
     }

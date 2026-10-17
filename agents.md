@@ -61,12 +61,14 @@ The project should prioritize robustness over flashy features.
   - assistant messages
   - messages containing code blocks
 - Grok project link sync for X → Grok send flow
+- ChatGPT project sync (separate from Grok) for ChatGPT-targeted send
+- iHerb product page → ask Grok / ChatGPT (FAB + product extract + prompt templates; dual project pickers)
 
 ### Out of Scope (MVP)
 - Cloud sync
 - Remote backend
 - AI-generated summaries
-- Multi-site support beyond ChatGPT / Grok / X
+- Multi-site support beyond ChatGPT / Grok / X / iHerb
 - Export to external services
 - Browser support beyond Chrome-compatible browsers
 
@@ -171,7 +173,7 @@ Deliverables:
 ### Responsibilities
 
 #### Content Script
-- runs on `https://chatgpt.com/*` and `https://grok.com/*` (plus X for Grok button)
+- runs on `https://chatgpt.com/*` and `https://grok.com/*` (plus X for Grok button, iHerb for product ask-AI)
 - scans DOM and extracts messages
 - mounts the floating navigator panel (Shadow DOM)
 - performs scroll/jump actions

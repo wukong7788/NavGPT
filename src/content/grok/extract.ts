@@ -29,6 +29,10 @@ function looksLikeComposer(el: Element): boolean {
 }
 
 function detectRole(el: Element, index: number): ChatMessageRecord["role"] {
+  const testid = (el.getAttribute("data-testid") || "").toLowerCase();
+  if (testid === "user-message" || testid.includes("user-message")) return "user";
+  if (testid === "assistant-message" || testid.includes("assistant-message")) return "assistant";
+
   const attr =
     el.getAttribute("data-message-author-role") ||
     el.getAttribute("data-role") ||
@@ -41,16 +45,25 @@ function detectRole(el: Element, index: number): ChatMessageRecord["role"] {
     return attr;
   }
 
-  const cls = String((el as HTMLElement).className || "").toLowerCase();
-  const text = (el.textContent || "").slice(0, 40).toLowerCase();
-  if (/user|human|you/.test(cls) || /^you\b/.test(text)) return "user";
-  if (/assistant|model|grok|bot|ai/.test(cls)) return "assistant";
+  // Class heuristics — avoid matching substrings like "not-prose"
+  const cls = ` ${String((el as HTMLElement).className || "").toLowerCase()} `;
+  if (/\b(user|human)\b/.test(cls)) return "user";
+  if (/\b(assistant|model|bot)\b/.test(cls)) return "assistant";
 
   // Fallback: odd indices often assistant in chat UIs that alternate starting with user
   return index % 2 === 0 ? "user" : "assistant";
 }
 
 function queryMessageNodes(): Element[] {
+  // Prefer Grok's stable bubble test ids
+  const bubbles = Array.from(
+    document.querySelectorAll('[data-testid="user-message"], [data-testid="assistant-message"]')
+  ).filter((el) => !looksLikeComposer(el) && (el.textContent || "").trim().length > 0);
+
+  if (bubbles.length > 0) {
+    return bubbles.filter((el) => !bubbles.some((other) => other !== el && other.contains(el)));
+  }
+
   const explicit = Array.from(
     document.querySelectorAll(
       [
@@ -76,22 +89,29 @@ function queryMessageNodes(): Element[] {
     document.body;
 
   const blocks = Array.from(
-    root.querySelectorAll(".markdown, .prose, [class*='markdown'], [class*='Message'], [class*='message']")
+    root.querySelectorAll(
+      ".response-content-markdown, .markdown, .prose:not(.not-prose), [class*='markdown']"
+    )
   ).filter((el) => {
     if (looksLikeComposer(el)) return false;
+    if (el.closest(".thinking-container, .tiptap, .ProseMirror, [contenteditable='true']")) {
+      return false;
+    }
+    const cls = String((el as HTMLElement).className || "");
+    if (/\bnot-prose\b/.test(cls)) return false;
     const rect = el.getBoundingClientRect();
     if (rect.height < 24 || rect.width < 80) return false;
     const text = (el.textContent || "").trim();
     return text.length >= 2 && text.length < 20000;
   });
 
-  // Dedupe nested matches — keep outermost-ish by preferring fewer ancestors in set
   return blocks.filter((el) => !blocks.some((other) => other !== el && other.contains(el)));
 }
 
 /** Strip Grok UI chrome (thinking/work timers) from message text. */
 export function stripGrokUiChrome(text: string): string {
   return text
+    .replace(/^\s*Grok\s*/i, "")
     .replace(/^\s*工作了\s*\d+\s*(?:秒|s|sec|seconds?)?\s*/iu, "")
     .replace(/^\s*(?:已思考|思考了|Thought for|Thinking for|Worked for)\s*\d+\s*(?:秒|s|sec|seconds?|m|min|minutes?)?\s*/iu, "")
     .replace(/\b工作了\s*\d+\s*(?:秒|s|sec|seconds?)?\b/giu, " ")
@@ -102,16 +122,35 @@ export function stripGrokUiChrome(text: string): string {
     .trim();
 }
 
-function messageBodyText(node: Element): string {
-  // Prefer markdown/prose body so thinking-status controls outside aren't included.
-  const body =
-    node.querySelector(".markdown, .prose, [class*='markdown'], [class*='prose']") ||
-    node.querySelector("[data-testid*='markdown'], [data-testid*='message-content']") ||
-    node;
+function pickMessageBody(node: Element): Element {
+  // Never use [class*='prose'] — it matches Grok's `.not-prose` thinking chrome first.
+  const candidates = Array.from(
+    node.querySelectorAll(
+      ".response-content-markdown, .markdown, .prose, [class*='markdown'], [data-testid*='markdown'], [data-testid*='message-content']"
+    )
+  ).filter((el) => {
+    const cls = String((el as HTMLElement).className || "");
+    if (/\bnot-prose\b/.test(cls)) return false;
+    if (el.closest(".thinking-container")) return false;
+    return (el.textContent || "").trim().length >= 2;
+  });
 
+  if (candidates.length === 0) return node;
+
+  // Prefer the longest real content block (assistant markdown), not tiny chrome.
+  return candidates.sort(
+    (a, b) => (b.textContent || "").trim().length - (a.textContent || "").trim().length
+  )[0];
+}
+
+function messageBodyText(node: Element): string {
+  const body = pickMessageBody(node);
   const clone = body.cloneNode(true) as Element;
+
   clone
-    .querySelectorAll("button, [role='button'], nav, svg, script, style")
+    .querySelectorAll(
+      "button, [role='button'], nav, svg, script, style, .thinking-container, .sr-only, [class*='inline-media-container']"
+    )
     .forEach((el) => el.remove());
 
   // Drop short status rows like「工作了 33s」
@@ -141,11 +180,11 @@ export function extractGrokMessages(): ChatMessageRecord[] {
     const fullText = messageBodyText(node);
     if (!fullText) return;
 
-    const domId = node.getAttribute("data-message-id") || `grok-${index}`;
+    const domId = node.getAttribute("data-message-id") || node.getAttribute("data-testid") || `grok-${index}`;
     node.setAttribute(MSG_ATTR, String(index));
 
     records.push({
-      id: `msg-${conversationId}-${domId}`,
+      id: `msg-${conversationId}-${domId}-${index}`,
       index: index + 1,
       listIndex: index,
       role,
@@ -164,7 +203,12 @@ export function extractGrokMessages(): ChatMessageRecord[] {
 }
 
 export function extractionGrokLooksReady(messages: ChatMessageRecord[]): boolean {
-  return messages.length > 0;
+  if (messages.length === 0) return false;
+  // On a normal chat, wait until at least one assistant bubble has text when a user exists.
+  const hasUser = messages.some((m) => m.role === "user");
+  const hasAssistant = messages.some((m) => m.role === "assistant" && m.fullText.trim().length > 0);
+  if (hasUser && !hasAssistant) return false;
+  return true;
 }
 
 export function hasGrokMessages(): boolean {

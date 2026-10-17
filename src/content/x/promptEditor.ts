@@ -1,4 +1,13 @@
 import {
+  createChatgptProject,
+  getLastChatgptProjectId,
+  loadChatgptProjects,
+  saveChatgptProjects,
+  setLastChatgptProjectId,
+  type ChatgptProject,
+} from "../../shared/chatgptProjects";
+import { openChatgptWithPrompt } from "../../shared/chatgptShare";
+import {
   createProject,
   getLastProjectId,
   loadGrokProjects,
@@ -16,6 +25,8 @@ import {
   type GrokPromptTemplate,
 } from "../../shared/grokPromptTemplates";
 import { openGrokWithPrompt } from "../../shared/grokShare";
+
+type AnyProject = GrokProject | ChatgptProject;
 
 const ROOT_ID = "navgpt-grok-prompt-root";
 const STYLE_ID = "navgpt-grok-prompt-style";
@@ -102,6 +113,17 @@ function ensureStyles() {
       font-size: 12px;
       color: #536471;
     }
+    #${ROOT_ID} .navgpt-project-block {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    #${ROOT_ID} .navgpt-project-label {
+      margin: 0;
+      font-size: 12px;
+      font-weight: 600;
+      color: #536471;
+    }
     #${ROOT_ID} .navgpt-project-row,
     #${ROOT_ID} .navgpt-preset-row {
       display: flex;
@@ -174,6 +196,7 @@ function ensureStyles() {
     #${ROOT_ID} .navgpt-footer {
       display: flex;
       justify-content: flex-end;
+      flex-wrap: wrap;
       gap: 8px;
       padding: 12px 16px 16px;
       border-top: 1px solid #eff3f4;
@@ -194,12 +217,18 @@ function ensureStyles() {
       background: #10a37f;
       color: #fff;
     }
+    #${ROOT_ID} .navgpt-btn-chatgpt {
+      background: #212121;
+      color: #fff;
+    }
     #${ROOT_ID} .navgpt-btn-danger {
       background: #fee;
       color: #b42318;
     }
-    #${ROOT_ID} .navgpt-btn-primary:hover { filter: brightness(1.05); }
+    #${ROOT_ID} .navgpt-btn-primary:hover,
+    #${ROOT_ID} .navgpt-btn-chatgpt:hover { filter: brightness(1.05); }
     #${ROOT_ID} .navgpt-btn-primary:disabled,
+    #${ROOT_ID} .navgpt-btn-chatgpt:disabled,
     #${ROOT_ID} .navgpt-btn-secondary:disabled,
     #${ROOT_ID} .navgpt-btn-danger:disabled {
       opacity: 0.5;
@@ -252,6 +281,7 @@ function ensureStyles() {
         border-color: #38444d;
       }
       #${ROOT_ID} .navgpt-hint,
+      #${ROOT_ID} .navgpt-project-label,
       #${ROOT_ID} .navgpt-tpl-item label,
       #${ROOT_ID} .navgpt-chip-settings { color: #8b98a5; }
       #${ROOT_ID} .navgpt-close { color: #e7e9ea; }
@@ -274,6 +304,10 @@ function ensureStyles() {
         background: #38444d;
         color: #e7e9ea;
       }
+      #${ROOT_ID} .navgpt-btn-chatgpt {
+        background: #e7e9ea;
+        color: #0f1419;
+      }
       #${ROOT_ID} .navgpt-btn-danger {
         background: #3f1d1d;
         color: #fca5a5;
@@ -287,11 +321,16 @@ function closeEditor() {
   document.getElementById(ROOT_ID)?.remove();
 }
 
-function fillProjectSelect(select: HTMLSelectElement, projects: GrokProject[], selectedId: string) {
+function fillProjectSelect(
+  select: HTMLSelectElement,
+  projects: AnyProject[],
+  selectedId: string,
+  defaultLabel = "默认对话（不指定项目）"
+) {
   select.innerHTML = "";
   const defaultOpt = document.createElement("option");
   defaultOpt.value = DEFAULT_OPTION;
-  defaultOpt.textContent = "默认对话（不指定项目）";
+  defaultOpt.textContent = defaultLabel;
   select.appendChild(defaultOpt);
 
   for (const project of projects) {
@@ -478,7 +517,7 @@ function escapeAttr(s: string): string {
   return escapeHtml(s).replace(/'/g, "&#39;");
 }
 
-/** Show editable prompt dialog; send opens Grok with the final text. */
+/** Show editable prompt dialog; send opens Grok or ChatGPT with the final text. */
 export async function openPromptEditor(ctx: PromptEditorContext | string) {
   // Back-compat: older callers passed a prebuilt prompt string.
   const context: PromptEditorContext =
@@ -489,9 +528,11 @@ export async function openPromptEditor(ctx: PromptEditorContext | string) {
   ensureStyles();
   closeEditor();
 
-  let projects = await loadGrokProjects();
+  let grokProjects = await loadGrokProjects();
+  let chatgptProjects = await loadChatgptProjects();
   let templates = await loadGrokPromptTemplates();
-  const lastId = await getLastProjectId();
+  const lastGrokId = await getLastProjectId();
+  const lastChatgptId = await getLastChatgptProjectId();
   const lastTemplateId = context.templateId || (await getLastPromptTemplateId());
   let activeTemplateId =
     templates.find((t) => t.id === lastTemplateId)?.id || templates[0]?.id || "factCheck";
@@ -514,39 +555,67 @@ export async function openPromptEditor(ctx: PromptEditorContext | string) {
   root.id = ROOT_ID;
   root.innerHTML = `
     <div class="navgpt-backdrop" data-action="close"></div>
-    <div class="navgpt-dialog" role="dialog" aria-modal="true" aria-label="编辑发给 Grok 的内容">
+    <div class="navgpt-dialog" role="dialog" aria-modal="true" aria-label="用 NavGPT 发送">
       <div class="navgpt-header">
-        <h2 class="navgpt-title">发送给 Grok</h2>
+        <h2 class="navgpt-title">发送给 AI</h2>
         <button class="navgpt-close" type="button" data-action="close" aria-label="关闭">×</button>
       </div>
       <div class="navgpt-body">
-        <p class="navgpt-hint">选择项目与提示词按钮，可再编辑文案。项目可在 <strong>grok.com</strong> Nav 面板「同步项目」拉取。</p>
-        <div class="navgpt-project-row">
-          <select data-role="project" aria-label="选择 Grok 项目"></select>
-          <button class="navgpt-btn navgpt-btn-secondary" type="button" data-action="add-project">添加</button>
-          <button class="navgpt-btn navgpt-btn-secondary" type="button" data-action="remove-project" title="删除当前选中的项目">删除</button>
+        <p class="navgpt-hint">两套项目互不共用：在 <strong>chatgpt.com</strong> / <strong>grok.com</strong> 的 Nav 面板分别「同步项目」。发送时只用对应一侧的选择。</p>
+        <div class="navgpt-project-block">
+          <p class="navgpt-project-label">Grok 项目（仅「发送给 Grok」）</p>
+          <div class="navgpt-project-row">
+            <select data-role="grok-project" aria-label="选择 Grok 项目"></select>
+            <button class="navgpt-btn navgpt-btn-secondary" type="button" data-action="add-grok-project">添加</button>
+            <button class="navgpt-btn navgpt-btn-secondary" type="button" data-action="remove-grok-project" title="删除当前选中的 Grok 项目">删除</button>
+          </div>
+        </div>
+        <div class="navgpt-project-block">
+          <p class="navgpt-project-label">ChatGPT 项目（仅「发送给 ChatGPT」）</p>
+          <div class="navgpt-project-row">
+            <select data-role="chatgpt-project" aria-label="选择 ChatGPT 项目"></select>
+            <button class="navgpt-btn navgpt-btn-secondary" type="button" data-action="add-chatgpt-project">添加</button>
+            <button class="navgpt-btn navgpt-btn-secondary" type="button" data-action="remove-chatgpt-project" title="删除当前选中的 ChatGPT 项目">删除</button>
+          </div>
         </div>
         <div class="navgpt-preset-row" data-role="presets"></div>
         <textarea></textarea>
       </div>
       <div class="navgpt-footer">
         <button class="navgpt-btn navgpt-btn-secondary" type="button" data-action="close">取消</button>
-        <button class="navgpt-btn navgpt-btn-primary" type="button" data-action="send">发送给 Grok</button>
+        <button class="navgpt-btn navgpt-btn-chatgpt" type="button" data-action="send-chatgpt">发送给 ChatGPT</button>
+        <button class="navgpt-btn navgpt-btn-primary" type="button" data-action="send-grok">发送给 Grok</button>
       </div>
     </div>
   `;
 
   const textarea = root.querySelector("textarea") as HTMLTextAreaElement;
-  const sendBtn = root.querySelector('[data-action="send"]') as HTMLButtonElement;
-  const removeBtn = root.querySelector('[data-action="remove-project"]') as HTMLButtonElement;
-  const select = root.querySelector('[data-role="project"]') as HTMLSelectElement;
+  const sendGrokBtn = root.querySelector('[data-action="send-grok"]') as HTMLButtonElement;
+  const sendChatgptBtn = root.querySelector('[data-action="send-chatgpt"]') as HTMLButtonElement;
+  const removeGrokBtn = root.querySelector(
+    '[data-action="remove-grok-project"]'
+  ) as HTMLButtonElement;
+  const removeChatgptBtn = root.querySelector(
+    '[data-action="remove-chatgpt-project"]'
+  ) as HTMLButtonElement;
+  const grokSelect = root.querySelector('[data-role="grok-project"]') as HTMLSelectElement;
+  const chatgptSelect = root.querySelector('[data-role="chatgpt-project"]') as HTMLSelectElement;
   const presetRow = root.querySelector('[data-role="presets"]') as HTMLElement;
   textarea.value = initialPrompt;
-  fillProjectSelect(select, projects, lastId);
+  fillProjectSelect(grokSelect, grokProjects, lastGrokId, "默认对话（不指定 Grok 项目）");
+  fillProjectSelect(
+    chatgptSelect,
+    chatgptProjects,
+    lastChatgptId,
+    "默认对话（不指定 ChatGPT 项目）"
+  );
 
   const syncButtons = () => {
-    sendBtn.disabled = textarea.value.trim().length === 0;
-    removeBtn.disabled = !select.value;
+    const empty = textarea.value.trim().length === 0;
+    sendGrokBtn.disabled = empty;
+    sendChatgptBtn.disabled = empty;
+    removeGrokBtn.disabled = !grokSelect.value;
+    removeChatgptBtn.disabled = !chatgptSelect.value;
   };
 
   const paintPresets = () => {
@@ -566,7 +635,6 @@ export async function openPromptEditor(ctx: PromptEditorContext | string) {
           if (!templates.some((t) => t.id === activeTemplateId)) {
             activeTemplateId = templates[0]?.id || "factCheck";
           }
-          // Re-open main editor with same tweet context
           void openPromptEditor({
             tweetText: context.tweetText,
             postUrl: context.postUrl,
@@ -580,7 +648,8 @@ export async function openPromptEditor(ctx: PromptEditorContext | string) {
   paintPresets();
   syncButtons();
   textarea.addEventListener("input", syncButtons);
-  select.addEventListener("change", syncButtons);
+  grokSelect.addEventListener("change", syncButtons);
+  chatgptSelect.addEventListener("change", syncButtons);
 
   root.addEventListener("click", async (e) => {
     const target = e.target as HTMLElement;
@@ -591,8 +660,8 @@ export async function openPromptEditor(ctx: PromptEditorContext | string) {
       return;
     }
 
-    if (action === "add-project") {
-      const name = window.prompt("项目名称（例如：美股核查）");
+    if (action === "add-grok-project") {
+      const name = window.prompt("Grok 项目名称（例如：美股核查）");
       if (name === null) return;
       const url = window.prompt(
         "请粘贴该 Grok 项目页面链接（在 grok.com 打开项目后从地址栏复制）"
@@ -601,45 +670,112 @@ export async function openPromptEditor(ctx: PromptEditorContext | string) {
 
       const project = createProject(name, url);
       if (!project) {
-        window.alert("项目名称或链接无效，请重试。");
+        window.alert("Grok 项目名称或链接无效，请重试。");
         return;
       }
 
-      projects = [...projects, project];
-      await saveGrokProjects(projects);
+      grokProjects = [...grokProjects, project];
+      await saveGrokProjects(grokProjects);
       await setLastProjectId(project.id);
-      fillProjectSelect(select, projects, project.id);
+      fillProjectSelect(grokSelect, grokProjects, project.id, "默认对话（不指定 Grok 项目）");
       syncButtons();
       return;
     }
 
-    if (action === "remove-project") {
-      const id = select.value;
+    if (action === "remove-grok-project") {
+      const id = grokSelect.value;
       if (!id) return;
-      const targetProject = projects.find((p) => p.id === id);
+      const targetProject = grokProjects.find((p) => p.id === id);
       if (!targetProject) return;
-      if (!window.confirm(`删除项目「${targetProject.name}」？`)) return;
+      if (!window.confirm(`删除 Grok 项目「${targetProject.name}」？`)) return;
 
-      projects = projects.filter((p) => p.id !== id);
-      await saveGrokProjects(projects);
+      grokProjects = grokProjects.filter((p) => p.id !== id);
+      await saveGrokProjects(grokProjects);
       await setLastProjectId("");
-      fillProjectSelect(select, projects, "");
+      fillProjectSelect(grokSelect, grokProjects, "", "默认对话（不指定 Grok 项目）");
       syncButtons();
       return;
     }
 
-    if (action === "send") {
+    if (action === "add-chatgpt-project") {
+      const name = window.prompt("ChatGPT 项目名称（例如：美股核查）");
+      if (name === null) return;
+      const url = window.prompt(
+        "请粘贴该 ChatGPT 项目链接（形如 https://chatgpt.com/g/g-p-…/project）"
+      );
+      if (url === null) return;
+
+      const project = createChatgptProject(name, url);
+      if (!project) {
+        window.alert("ChatGPT 项目名称或链接无效，请确认链接含 /g/g-p-…/project。");
+        return;
+      }
+
+      chatgptProjects = [...chatgptProjects, project];
+      await saveChatgptProjects(chatgptProjects);
+      await setLastChatgptProjectId(project.id);
+      fillProjectSelect(
+        chatgptSelect,
+        chatgptProjects,
+        project.id,
+        "默认对话（不指定 ChatGPT 项目）"
+      );
+      syncButtons();
+      return;
+    }
+
+    if (action === "remove-chatgpt-project") {
+      const id = chatgptSelect.value;
+      if (!id) return;
+      const targetProject = chatgptProjects.find((p) => p.id === id);
+      if (!targetProject) return;
+      if (!window.confirm(`删除 ChatGPT 项目「${targetProject.name}」？`)) return;
+
+      chatgptProjects = chatgptProjects.filter((p) => p.id !== id);
+      await saveChatgptProjects(chatgptProjects);
+      await setLastChatgptProjectId("");
+      fillProjectSelect(
+        chatgptSelect,
+        chatgptProjects,
+        "",
+        "默认对话（不指定 ChatGPT 项目）"
+      );
+      syncButtons();
+      return;
+    }
+
+    if (action === "send-grok") {
       const text = textarea.value.trim();
       if (!text) return;
 
-      const selectedId = select.value;
-      const project = projects.find((p) => p.id === selectedId) || null;
+      const selectedId = grokSelect.value;
+      const project = grokProjects.find((p) => p.id === selectedId) || null;
       await setLastProjectId(selectedId || "");
       await setLastPromptTemplateId(activeTemplateId);
-      sendBtn.disabled = true;
-      sendBtn.textContent = "正在打开…";
+      sendGrokBtn.disabled = true;
+      sendChatgptBtn.disabled = true;
+      sendGrokBtn.textContent = "正在打开…";
       try {
         await openGrokWithPrompt(text, project);
+      } finally {
+        closeEditor();
+      }
+      return;
+    }
+
+    if (action === "send-chatgpt") {
+      const text = textarea.value.trim();
+      if (!text) return;
+
+      const selectedId = chatgptSelect.value;
+      const project = chatgptProjects.find((p) => p.id === selectedId) || null;
+      await setLastChatgptProjectId(selectedId || "");
+      await setLastPromptTemplateId(activeTemplateId);
+      sendGrokBtn.disabled = true;
+      sendChatgptBtn.disabled = true;
+      sendChatgptBtn.textContent = "正在打开…";
+      try {
+        await openChatgptWithPrompt(text, project);
       } finally {
         closeEditor();
       }

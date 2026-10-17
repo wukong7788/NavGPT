@@ -1,7 +1,7 @@
 {
   "name": "navgpt",
-  "version": "1.6.0",
-  "description": "Chrome extension for ChatGPT/Grok navigation and custom Grok actions on X posts",
+  "version": "1.9.2",
+  "description": "Chrome extension for ChatGPT/Grok navigation, X Grok/ChatGPT actions, and iHerb product ask-AI",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
@@ -9,7 +9,11 @@
     "preview": "vite preview",
     "test": "node tests/test-extraction.js"
   },
-  "keywords": ["chrome-extension", "chatgpt", "navigation"],
+  "keywords": [
+    "chrome-extension",
+    "chatgpt",
+    "navigation"
+  ],
   "author": "wukong7788",
   "license": "ISC",
   "repository": {

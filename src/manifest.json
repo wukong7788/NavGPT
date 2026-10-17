@@ -1,14 +1,18 @@
 {
   "manifest_version": 3,
   "name": "NavGPT - Chat Navigator",
-  "version": "1.6.0",
-  "description": "Fast navigation for ChatGPT and Grok conversations, plus custom Grok actions on X posts.",
-  "permissions": ["storage"],
+  "version": "1.9.2",
+  "description": "Fast navigation for ChatGPT and Grok conversations, custom Grok/ChatGPT actions on X, and ask AI about iHerb products.",
+  "permissions": [
+    "storage"
+  ],
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://x.com/*",
     "https://twitter.com/*",
-    "https://grok.com/*"
+    "https://grok.com/*",
+    "https://*.iherb.com/*",
+    "https://iherb.com/*"
   ],
   "icons": {
     "16": "icon16.png",
@@ -23,22 +27,62 @@
       "128": "icon128.png"
     }
   },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icon16.png",
+        "icon48.png",
+        "icon128.png"
+      ],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://grok.com/*",
+        "https://x.com/*",
+        "https://twitter.com/*",
+        "https://*.iherb.com/*",
+        "https://iherb.com/*"
+      ]
+    }
+  ],
   "background": {
     "service_worker": "background/index.ts",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": ["https://chatgpt.com/*"],
-      "js": ["content/index.ts"]
+      "matches": [
+        "https://chatgpt.com/*"
+      ],
+      "js": [
+        "content/index.ts"
+      ]
     },
     {
-      "matches": ["https://x.com/*", "https://twitter.com/*"],
-      "js": ["content/x/index.ts"]
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ],
+      "js": [
+        "content/x/index.ts"
+      ]
     },
     {
-      "matches": ["https://grok.com/*"],
-      "js": ["content/grok/index.ts"],
+      "matches": [
+        "https://grok.com/*"
+      ],
+      "js": [
+        "content/grok/index.ts"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://*.iherb.com/*",
+        "https://iherb.com/*"
+      ],
+      "js": [
+        "content/iherb/index.ts"
+      ],
       "run_at": "document_idle"
     }
   ]
